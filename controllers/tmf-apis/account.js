@@ -26,6 +26,7 @@ const logger = require('./../../lib/logger').logger.getLogger('TMF')
 const tmfUtils = require('./../../lib/tmfUtils')
 const url = require('url')
 const utils = require('./../../lib/utils')
+const path = require('path')
 
 const account = (function() {
 
@@ -61,6 +62,40 @@ const account = (function() {
                 status: 500
             });
         })
+    };
+
+    var validateRetrieval = function(req, callback) {
+        // Check if the request is a list of resources specifications
+
+        if (req.path.endsWith('billingAccount')) {
+            return tmfUtils.filterRelatedPartyFields(req, () => tmfUtils.ensureRelatedPartyIncluded(req, callback));
+        } else {
+            callback(null);
+        }
+        // validate if a resource specification is returned only by the owner
+    };
+
+    var validateRelatedParty = function(req, callback) {
+        var relatedPartyField = "relatedParty";
+        console. log ("ValidateRelatedParty");
+        // Creation request must include relatedParty field. Otherwise, an error must be arisen
+        if (req.method === "POST" && !(relatedPartyField in req-json)) {
+            callback({
+                status: 422,
+                message: 'Billing Accounts cannot be created without related parties'
+            });
+        } else {
+        // This part only be executed for update requests or for creation requests that include
+        // the relatedParty field.
+            if (!(relatedPartyField in req-json) || tmfUtils.hasPartyRole(req, req-json. relatedParty, OWNER_ROLE)) {
+                callback (null);
+            } else {
+                callback({
+                status: 403,
+                message: "The user making the request and the specified owner are not the same user"
+                });
+            }
+        }
     };
 
     var isOwner = function(req, asset, notAuthorizedMessage, callback) {
@@ -101,8 +136,8 @@ const account = (function() {
     };
 
     var validators = {
-        //GET: [utils.validateLoggedIn, validateRetrieval],
-        GET: [utils.validateLoggedIn],
+        GET: [utils.validateLoggedIn, validateRetrieval],
+        //GET: [utils.validateLoggedIn],
         //POST: [utils.validateLoggedIn, validateCreation, validateAccountAccountNotIncluded],
         POST: [utils.validateLoggedIn],
         //PATCH: [utils.validateLoggedIn, validateUpdateOwner, validateIDNotModified, validateAccountAccountNotIncluded],
@@ -117,22 +152,11 @@ const account = (function() {
             '^/' + config.endpoints.billing.path + '?(/(.*))?$'
         );
 
-        //req.apiUrl = "/account";
-
         var apiPath = url.parse(req.apiUrl).pathname;
         var regExpResult = pathRegExp.exec(apiPath);
 
-        console.log("Inicio checkPermissions");
-        console.log(config.endpoints.billing.path);
-        console.log("req.apiUrl");
-        console.log(req.apiUrl);
-        console.log("apiPath");
-        console.log(apiPath);
-        console.log("regExpResult");
-        console.log(regExpResult);
-        console.log("complete request");
-        console.log(req.body);
-        console.log("Fin checkPermissions");
+        const aux = req.apiUrl;
+        req.apiUrl = '/' + config.endpoints.billing.path + aux;
 
         if (regExpResult) {
             req.isCollection = regExpResult[3] ? false : true;
@@ -149,10 +173,6 @@ const account = (function() {
                     for (var i in validators[req.method]) {
                         reqValidators.push(validators[req.method][i].bind(this, req));
                     }
-
-                    console.log("Miramos el json");
-                    console.log(req.json);
-                    console.log("Fin json");
 
                     async.series(reqValidators, callback);
                 } catch (e) {
@@ -175,66 +195,35 @@ const account = (function() {
         }
     };
 
-    //No acaba de funcionar poque no hay un calback(null)
-    //esto parece que lo hace el 
+    var executePostValidation = function(req, callback) {
+        if (req.method === 'GET') {
+            var account = req.body;
+
+            if (Array.isArray(account)) {
+                // checkPermissions ensures that only owned billing accounts are retrieved
+                return callback(null);
+            } else if (req.apiUrl.indexOf('billingAccount') > -1) {
+                // This checks that the user is included in the list of related parties...
+                if (tmfUtils.isRelatedParty(req, account.relatedParty)) {
+                    return callback(null);
+                } else {
+                    return callback({
+                        status: 403,
+                        message: 'Unauthorized to retrieve the specified billing account'
+                    });
+                }
+            } else {
+                // Check that the user can retrieve the specified charge
+                validateProductCharge(req, account.serviceId[0].id, callback);
+            }
+        } else {
+            return callback(null);
+        }
+    };
 
     /*var executePostValidation = function(proxyRes, callback) {
-        // This is not supposed to fail since this method is only called when the request to the
-        // actual server is OK!
-
-        console.log("Inicio");
-        console.log(proxyRes.body);
-        console.log("Final");
-
-        //As veces devolve lista vacía e o parse non é capaz de lelo
-        if (proxyRes.length != 0) {
-            proxyRes.json = JSON.parse(proxyRes.body)
-        } else {
-            proxyRes.json = proxyRes.body;
-        }
-
-        if (proxyRes.method === 'GET') {
-            if (!Array.isArray(proxyRes.json)) {
-                isOwner(proxyRes, proxyRes.json, 'Unauthorized to retrieve the given account profile', function(err) {
-                    if (err) {
-                        var customerAccountsIds = null;
-
-                        if ('customerAccount' in proxyRes.json) {
-                            // Resource: Customer
-                            customerAccountsIds = proxyRes.json.customerAccount.map(function(item) {
-                                return item.id;
-                            });
-                        } else if ('customer' in proxyRes.json) {
-                            // Resource: CustomerAccount
-                            customerAccountsIds = [proxyRes.json.id];
-                        }
-
-                        if (customerAccountsIds && err.status === 403) {
-                            // Billing Addresses can be retrieved by involved sellers
-                            checkIsRelatedSeller(proxyRes, customerAccountsIds, callback);
-                        } else {
-                            callback(err);
-                        }
-                    } else {
-                        callback(null);
-                    }
-                });
-            } else {
-                // checkPermissions filters the requests to list customer accounts.
-                // checkPermissions ensures that users can only retrieve the list
-                // of customer they own.
-                callback(null);
-            }
-        } else if (proxyRes.method === 'POST' && 'customer' in proxyRes.json) {
-            attachCustomerAccount(proxyRes, callback);
-        } else {
-            callback(null);
-        }
-    };*/
-
-    var executePostValidation = function(proxyRes, callback) {
         callback(null);
-    }
+    }*/
     
     return {
         checkPermissions: checkPermissions,
