@@ -146,7 +146,7 @@ const account = (function() {
         //POST: [utils.validateLoggedIn, validateCreation, validateAccountAccountNotIncluded],
         POST: [utils.validateLoggedIn, validateRelatedParty],
         //PATCH: [utils.validateLoggedIn, validateUpdateOwner, validateIDNotModified, validateAccountAccountNotIncluded],
-        PATCH: [utils.validateLoggedIn, validateRelatedParty/*, validateOwner*/],
+        PATCH: [utils.validateLoggedIn, /*validateRelatedParty, validateOwner*/],
         // This method is not implemented by this API
         //'PUT': [ utils.validateLoggedIn, validateOwner, validateCreation ],
         DELETE: [utils.validateLoggedIn]
