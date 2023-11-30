@@ -17,6 +17,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * Igual podemos hacer que el asset en si sea el service Candiate,
+ * y así todo me tendría más sentido. Creo que la idea sería crear
+ * el service category, lanzar el cádidate después, y con la info 
+ */
+
 (function() {
 	'use strict';
 
@@ -43,8 +49,22 @@
 			'DATA_STATUS',
 			'EVENTS',
 			'ServiceSpecification',
+            'Asset', 
+            'AssetType',
 			'Utils',
 			ServiceSpecificationCreateController
+		])
+        //Este vai ser o controlador
+        .controller('ServiceCandidateCreateCtrl', [
+			'$state',
+			'$rootScope',
+			'DATA_STATUS',
+			'EVENTS',
+			'ServiceCandidate',
+            'Asset', 
+            'AssetType',
+			'Utils',
+			ServiceCandidateCreateController
 		])
 		.controller('ServiceSpecificationUpdateCtrl', [
 			'$scope',
@@ -57,6 +77,15 @@
             'EVENTS',
 			ServiceSpecificationUpdateController
 		])
+        .controller('AssetController', [
+            '$scope', 
+            '$rootScope', 
+            'Asset', 
+            'ProductSpec', 
+            'Utils', 
+            'EVENTS', 
+            AssetController
+        ]);
 
 	function ServiceSpecificationListController($scope, $state, $rootScope, ServiceSpecification, DATA_STATUS, Utils, EVENTS, LIFECYCLE_STATUS) {
 		var vm = this;
@@ -228,7 +257,16 @@
         }
     }
 
-	function ServiceSpecificationCreateController($state, $rootScope, DATA_STATUS, EVENTS, ServiceSpecification, Utils) {
+	function ServiceSpecificationCreateController(
+        $state, 
+        $rootScope, 
+        DATA_STATUS, 
+        EVENTS, 
+        ServiceSpecification,
+        Asset,
+        AssetType,
+        Utils
+    ) {
 		var vm = this;
 
 		const charCtl = characteristicsController.bind(this)
@@ -237,6 +275,10 @@
             {
                 title: 'General',
                 templateUrl: 'stock/service-specification/create/general'
+            },
+            {
+                title: 'Assets',
+                templateUrl: 'stock/product/create/assets'
             },
             {
                 title: 'Characteristics',
@@ -248,12 +290,18 @@
             }
         ];
 
+        vm.getAssetTypes = getAssetTypes;
+
 		this.STATUS = DATA_STATUS;
 		this.status = null;
 
 		this.data = ServiceSpecification.buildInitialData();
 
 		this.create = create;
+
+        function getAssetTypes() {
+            return AssetType.search();
+        }
 
 		function create() {
 			vm.status = vm.STATUS.PENDING;
@@ -321,6 +369,18 @@
             return result;
         }
 
+        /********************/
+
+        function loadPictureController() {
+            buildPictureController(vm, $scope, vm.stepList[4].form, Asset);
+        }
+
+        function loadFileController() {
+            buildFileController(vm, $scope, vm.stepList[4].form, Asset);
+        }
+
+        /********************/
+
         this.updateStatus = (status) => {
             this.data.lifecycleStatus = status
         }
@@ -357,5 +417,395 @@
             });
 		}
 	}
+
+    /***********************************/
+    // Cambios Marcos
+    /*
+        Solo se conecta coa base de datos local para garda a imaxe e o archivo
+        Entendo que entonces no chargin non necesito crear o specification
+        Porque se crea directamente aquí.
+        Igual a idea ahora é porbar a crear o asset aquí, crear o form onde 
+        se garda a imaxe e probar a subir a info ao charging
+        E tamén se chamaría nos assets
+        Esta imaxe crease nos Attachments
+        O resto de info debería ir directa á api de tmforums
+    */
+
+    function buildPictureController(vm, $scope, pictureForm, Asset) {
+        vm.clearFileInput = clearFileInput;
+
+        function clearFileInput() {
+            if (!pictureForm.pictureFile) {
+                pictureForm.pictureFile = {};
+            } else {
+                // Reset possible previous errors
+                pictureForm.pictureFile.$invalid = false;
+                pictureForm.pictureFile.$error = {};
+            }
+        }
+
+        $scope.$watch(
+            function watchFile() {
+                return vm.pictureFile;
+            },
+            function() {
+                // Check that the new file is a valid image
+                if (vm.pictureFile) {
+                    vm.clearFileInput();
+                    pictureForm.pictureFile.$dirty = true;
+
+                    if (
+                        vm.pictureFile.type != 'image/gif' &&
+                        vm.pictureFile.type != 'image/jpeg' &&
+                        vm.pictureFile.type != 'image/png' &&
+                        vm.pictureFile.type != 'image/bmp'
+                    ) {
+                        // Set input error
+                        pictureForm.pictureFile.$invalid = true;
+                        pictureForm.pictureFile.$error = {
+                            format: true
+                        };
+                        return;
+                    }
+
+                    var scope = vm.data.name.replace(/ /g, '');
+
+                    if (scope.length > 10) {
+                        scope = scope.substr(0, 10);
+                    }
+                    // Upload the file to the server when it is included in the input
+                    Asset.uploadAsset(
+                        vm.pictureFile,
+                        scope,
+                        null,
+                        vm.pictureFile.type,
+                        true,
+                        null,
+                        function(result) {
+                            vm.data.attachment[0].url = result.content;
+                        },
+                        function() {
+                            // The picture cannot be uploaded set error in input
+                            pictureForm.pictureFile.$invalid = true;
+                            pictureForm.pictureFile.$error = {
+                                upload: true
+                            };
+                        }
+                    );
+                }
+            }
+        );
+        clearFileInput();
+    }
+
+    function buildFileController(vm, $scope, form, Asset) {
+        function clearFileInput() {
+            if (!form.extraFile) {
+                form.extraFile = {};
+            } else {
+                // Reset possible previous errors
+                form.extraFile.$invalid = false;
+                form.extraFile.$error = {};
+            }
+        }
+
+        vm.removeExtraFile = function(index) {
+            vm.extraFiles.splice(index, 1);
+        };
+
+        $scope.$watch(
+            function() {
+                return vm.extraFile;
+            },
+            function() {
+                // Check that the new file is a valid image
+                if (vm.extraFile) {
+                    clearFileInput();
+                    form.extraFile.$dirty = true;
+
+                    var prefix = vm.data.name.replace(/ /g, '');
+
+                    if (prefix.length > 10) {
+                        prefix = prefix.substr(0, 10);
+                    }
+
+                    // Upload the file to the server when it is included in the input
+                    Asset.uploadAsset(
+                        vm.extraFile,
+                        prefix,
+                        null,
+                        vm.extraFile.type,
+                        true,
+                        null,
+                        function(result) {
+                            vm.extraFiles.push({
+                                name: vm.extraFile.name,
+                                type: vm.extraFile.type,
+                                href: result.content
+                            });
+                        },
+                        function() {
+                            // The picture cannot be uploaded set error in input
+                            form.extraFile.$invalid = true;
+                            form.extraFile.$error = {
+                                upload: true
+                            };
+                        }
+                    );
+                }
+            }
+        );
+
+        clearFileInput();
+    }
+
+    /***********************************/
+    
+    function AssetController($scope, $rootScope, Asset, ProductSpec, Utils, EVENTS) {
+        var controller = $scope.vm;
+        var form = null;
+
+        var vm = this;
+
+        vm.assetTypes = [];
+        vm.digitalChars = [];
+        vm.meta = {};
+        vm.status = LOADING;
+
+        vm.isSelected = isSelected;
+        vm.setCurrentType = setCurrentType;
+        vm.getCurrentForm = getCurrentForm;
+        vm.initMediaType = initMediaType;
+        vm.setForm = setForm;
+        /* Meta info management */
+        vm.getMetaLabel = getMetaLabel;
+
+        function isSelected(format) {
+            return vm.currFormat === format;
+        }
+
+        function getMetaLabel(id) {
+            return typeof vm.currentType.form[id].label !== 'undefined' ? vm.currentType.form[id].label : id;
+        }
+
+        function initMetaData() {
+            // Evaluate form field in order to include default values
+            if (typeof vm.currentType.form !== 'undefined') {
+                for (var id in vm.currentType.form) {
+                    if (typeof vm.currentType.form[id].default !== 'undefined') {
+                        vm.meta[id] = vm.currentType.form[id].default;
+                    }
+                }
+            }
+        }
+
+        function setCurrentType() {
+            var i,
+                found = false;
+            var assetType = vm.digitalChars[0].productSpecCharacteristicValue[0].value;
+
+            for (i = 0; i < vm.assetTypes.length && !found; i++) {
+                if (assetType === vm.assetTypes[i].name) {
+                    found = true;
+                    vm.currentType = vm.assetTypes[i];
+                    vm.meta = {};
+                    initMetaData();
+                }
+            }
+            vm.currFormat = vm.currentType.formats[0];
+        }
+
+        function getCurrentForm() {
+            let formFields = [];
+            if (vm.currentType.formOrder.length > 0) {
+                vm.currentType.formOrder.forEach((key) => {
+                    vm.currentType.form[key].id = key;
+                    formFields.push(vm.currentType.form[key]);
+                })
+            } else {
+                for (key in vm.currentType.form) {
+                    vm.currentType.form[key].id = key;
+                    formFields.push(vm.currentType.form[key]);
+                }
+            }
+            return formFields;
+        }
+
+        function showAssetError(response) {
+            var defaultMessage =
+                'There was an unexpected error that prevented your ' + 'digital asset to be registered';
+            var error = Utils.parseError(response, defaultMessage);
+
+            $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
+                error: error
+            });
+        }
+
+        function save(uploadM, registerM, assetId, scope, callback) {
+            var meta = null;
+
+            if (Object.keys(vm.meta).length) {
+                meta = vm.meta;
+            }
+
+            if (vm.currFormat === 'FILE') {
+                // If the format is file, upload it to the asset manager
+                uploadM(
+                    vm.assetFile,
+                    scope,
+                    vm.digitalChars[0].productSpecCharacteristicValue[0].value,
+                    vm.digitalChars[1].productSpecCharacteristicValue[0].value,
+                    false,
+                    meta,
+                    function(result) {
+                        // Set file location
+                        vm.digitalChars[2].productSpecCharacteristicValue[0].value = result.content;
+                        vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
+                        callback();
+                    },
+                    (response) => showAssetError(response),
+                    assetId
+                );
+            } else if (controller.isDigital && vm.currFormat === 'URL') {
+                if(meta !== null && meta !== undefined && meta.idPattern !== undefined){
+                    var entity_id = "<entity_id>"
+                    var entity_type = ""
+                    var idPattern = meta.idPattern.split(":")
+                    if (idPattern.length > 6){
+                        entity_id = idPattern[6]
+                    }
+                    entity_type = idPattern[2]
+                    var end_point = vm.digitalChars[2].productSpecCharacteristicValue[0].value + "/v2/entities/" + entity_id + "/attrs/" + "<attribute>?type=" + entity_type
+                    vm.digitalChars[2].productSpecCharacteristicValue[0].value = end_point
+                }
+                registerM(
+                    vm.digitalChars[2].productSpecCharacteristicValue[0].value,
+                    vm.digitalChars[0].productSpecCharacteristicValue[0].value,
+                    vm.digitalChars[1].productSpecCharacteristicValue[0].value,
+                    meta,
+                    (result) => {
+                        vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
+                        callback();
+                    },
+                    (response) => showAssetError(response),
+                    assetId
+                );
+            }
+        }
+
+        var saveAsset = save.bind(this, Asset.uploadAsset, Asset.registerAsset, null);
+
+        function upgradeAsset(scope, callback) {
+            // Get asset id using product id
+            Asset.searchByProduct(controller.data.id).then(
+                (assetInfo) => {
+                    save(Asset.upgradeAsset, Asset.upgradeRegisteredAsset, assetInfo[0].id, scope, callback);
+                },
+                (err) => {
+                    showAssetError(err);
+                }
+            );
+        }
+
+        function getDigitalChars() {
+            return vm.digitalChars;
+        }
+
+        function getMetaInfo() {
+            return vm.meta;
+        }
+
+        function initMediaType() {
+            if (vm.currentType.mediaTypes.length > 0) {
+                vm.digitalChars[1].productSpecCharacteristicValue[0].value = vm.currentType.mediaTypes[0];
+            } else {
+                vm.digitalChars[1].productSpecCharacteristicValue[0].value = '';
+            }
+        }
+
+        function setForm(modelForm) {
+            form = modelForm;
+        }
+
+        function isValidAsset() {
+            return form !== null && form.$valid;
+        }
+
+        // Inject handler for creating asset
+        controller.assetCtl = {
+            saveAsset: saveAsset,
+            upgradeAsset: upgradeAsset,
+            getDigitalChars: getDigitalChars,
+            getMetaInfo: getMetaInfo,
+            isValidAsset: isValidAsset
+        };
+
+        // Get the asset types related to the current scope
+        controller.getAssetTypes().then(
+            function(typeList) {
+                angular.copy(typeList, vm.assetTypes);
+
+                if (typeList.length) {
+                    // Initialize digital asset characteristics
+                    vm.digitalChars.push(
+                        ProductSpec.createCharacteristic({
+                            name: 'Asset type',
+                            description: 'Type of the digital asset described in this product specification'
+                        })
+                    );
+                    vm.digitalChars[0].productSpecCharacteristicValue.push(
+                        ProductSpec.createCharacteristicValue({
+                            isDefault: true,
+                            value: typeList[0].name
+                        })
+                    );
+                    vm.digitalChars.push(
+                        ProductSpec.createCharacteristic({
+                            name: 'Media type',
+                            description: 'Media type of the digital asset described in this product specification'
+                        })
+                    );
+                    vm.digitalChars[1].productSpecCharacteristicValue.push(
+                        ProductSpec.createCharacteristicValue({
+                            isDefault: true
+                        })
+                    );
+                    vm.digitalChars.push(
+                        ProductSpec.createCharacteristic({
+                            name: 'Location',
+                            description: 'URL pointing to the digital asset described in this product specification'
+                        })
+                    );
+                    vm.digitalChars[2].productSpecCharacteristicValue.push(
+                        ProductSpec.createCharacteristicValue({
+                            isDefault: true
+                        })
+                    );
+                    vm.digitalChars.push(
+                        ProductSpec.createCharacteristic({
+                            name: 'Asset',
+                            description: 'ID of the asset being offered as registered in the BAE'
+                        })
+                    );
+                    vm.digitalChars[3].productSpecCharacteristicValue.push(
+                        ProductSpec.createCharacteristicValue({
+                            isDefault: true
+                        })
+                    );
+                    vm.currentType = typeList[0];
+                    vm.currFormat = vm.currentType.formats[0];
+                }
+
+                vm.status = LOADED;
+            },
+            function() {
+                vm.errMsg = 'There has been an error trying to retrieve asset type info';
+                vm.status = ERROR;
+            }
+        );
+    }
+    
+
+    /***********************************/
 
 })();
