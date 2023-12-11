@@ -54,7 +54,8 @@
 			'Utils',
 			ServiceSpecificationCreateController
 		])
-        //Este vai ser o controlador
+        /**************************/
+        //Candidate
         .controller('ServiceCandidateCreateCtrl', [
 			'$state',
 			'$rootScope',
@@ -66,6 +67,7 @@
 			'Utils',
 			ServiceCandidateCreateController
 		])
+        /************************/
 		.controller('ServiceSpecificationUpdateCtrl', [
 			'$scope',
             '$state',
@@ -294,6 +296,7 @@
 
 		this.STATUS = DATA_STATUS;
 		this.status = null;
+        vm.isDigital = false;
 
 		this.data = ServiceSpecification.buildInitialData();
 
@@ -306,8 +309,22 @@
 		function create() {
 			vm.status = vm.STATUS.PENDING;
 			this.data.specCharacteristic = this.characteristics
+
+            /**********************/
+            /*if (vm.isDigital) {
+                var scope = vm.data.name.replace(/ /g, '');
+
+                if (scope.length > 10) {
+                    scope = scope.substr(0, 10);
+                }
+
+                vm.assetCtl.saveAsset(scope, saveProduct);
+            } else {
+                saveProduct();
+            }*/
+            /**********************/
 	
-			ServiceSpecification.createServiceSpecification(this.data).then((spec) => {
+			service = ServiceSpecification.createServiceSpecification(this.data).then((spec) => {
 				vm.status = vm.STATUS.LOADED;
 				$state.go('stock.service.update', {
 					serviceId: spec.id
@@ -326,7 +343,61 @@
 					error: error
 				});
 			});
+
+            /******************/
+            // Falta el get al category
+            /*candidate = {
+                category : {
+                    id : "proba"
+                },
+                serviceSpecification : {
+                    id : service.id
+                }
+            }
+            ServiceCandidate.createServiceCandidate()*/
+            /******************/
+
 		}
+        
+        /*********************************/
+
+        function loadPictureController() {
+            buildPictureController(vm, $scope, vm.stepList[4].form, Asset);
+        }
+
+        function loadFileController() {
+            buildFileController(vm, $scope, vm.stepList[4].form, Asset);
+        }
+
+        function isActiveResource(resourceId) {
+            return resources.indexOf(resourceId) >= 0
+        }
+
+        function handleResource(resource) {
+            if (isActiveResource(resource.id)) {
+                resources.splice(resources.indexOf(resource.id), 1)
+                this.dataRes.splice(resources.indexOf(resource.id), 1)
+            } else {
+                resources.push(resource.id)
+                this.dataRes.push(resource)
+            }
+        }
+
+        function isActiveService(serviceId) {
+            return services.indexOf(serviceId) >= 0
+        }
+
+        function handleService(service) {
+            if (isActiveService(service.id)) {
+                services.splice(services.indexOf(service.id), 1)
+                this.dataServ.splice(services.indexOf(service.id), 1)
+            } else {
+                services.push(service.id)
+                this.dataServ.push(service)
+            }
+        }
+
+        /*********************************/
 
 		charCtl();
 	}
@@ -567,8 +638,72 @@
 
         var vm = this;
 
-        vm.assetTypes = [];
-        vm.digitalChars = [];
+        var characteristic11 = {
+            value : "name1",
+            algo : "algo"
+        }
+
+        var characteristic12 = {
+            value : "name2",
+            algo : "algo"
+        }
+
+        var characteristic2 = {
+            value : "mediaType1",
+            algo : "algo"
+        }
+        var characteristic3 = {
+            value : "http://url1",
+            algo : "algo"
+        }
+    
+        var digitalChar1 = {
+            productSpecCharacteristicValue : [characteristic11, characteristic12]
+        }
+
+        var digitalChar2 = {
+            productSpecCharacteristicValue : [characteristic2]
+        }
+
+        var digitalChar3 = {
+            productSpecCharacteristicValue : [characteristic3]
+        }
+        
+        var assetType1 = {
+            name : "name1",
+            formats : [
+                "URL",
+                "FILE"
+            ],
+            mediaTypes : ["mediaT1"],
+            formOrder : [0, 1],
+            form :
+            [{
+                id : null
+            },
+            {
+                id : null
+            }]
+        }
+        var assetType2 = {
+            name : "name2",
+            formats : [
+                "URL",
+                "FILE"
+            ],
+            mediaTypes : ["media2"],
+            formOrder : [0,1],
+            form :[{
+                id : null
+            },
+            {
+                id : null
+            }]
+
+        }
+
+        vm.assetTypes = [assetType1, assetType2];
+        vm.digitalChars = [digitalChar1,digitalChar2,digitalChar3];
         vm.meta = {};
         vm.status = LOADING;
 
@@ -580,6 +715,10 @@
         /* Meta info management */
         vm.getMetaLabel = getMetaLabel;
 
+        function setForm(modelForm) {
+            form = modelForm;
+        }
+
         function isSelected(format) {
             return vm.currFormat === format;
         }
@@ -588,28 +727,23 @@
             return typeof vm.currentType.form[id].label !== 'undefined' ? vm.currentType.form[id].label : id;
         }
 
-        function initMetaData() {
-            // Evaluate form field in order to include default values
-            if (typeof vm.currentType.form !== 'undefined') {
-                for (var id in vm.currentType.form) {
-                    if (typeof vm.currentType.form[id].default !== 'undefined') {
-                        vm.meta[id] = vm.currentType.form[id].default;
-                    }
-                }
+        function initMediaType() {
+            if (vm.currentType.mediaTypes.length > 0) {
+                vm.digitalChars[1].productSpecCharacteristicValue[0].value = vm.currentType.mediaTypes[0];
+            } else {
+                vm.digitalChars[1].productSpecCharacteristicValue[0].value = '';
             }
         }
 
         function setCurrentType() {
-            var i,
-                found = false;
+            var i, found = false;
             var assetType = vm.digitalChars[0].productSpecCharacteristicValue[0].value;
 
             for (i = 0; i < vm.assetTypes.length && !found; i++) {
+
                 if (assetType === vm.assetTypes[i].name) {
                     found = true;
                     vm.currentType = vm.assetTypes[i];
-                    vm.meta = {};
-                    initMetaData();
                 }
             }
             vm.currFormat = vm.currentType.formats[0];
@@ -631,181 +765,94 @@
             return formFields;
         }
 
-        function showAssetError(response) {
-            var defaultMessage =
-                'There was an unexpected error that prevented your ' + 'digital asset to be registered';
-            var error = Utils.parseError(response, defaultMessage);
-
-            $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
-                error: error
-            });
-        }
-
-        function save(uploadM, registerM, assetId, scope, callback) {
-            var meta = null;
-
-            if (Object.keys(vm.meta).length) {
-                meta = vm.meta;
-            }
-
-            if (vm.currFormat === 'FILE') {
-                // If the format is file, upload it to the asset manager
-                uploadM(
-                    vm.assetFile,
-                    scope,
-                    vm.digitalChars[0].productSpecCharacteristicValue[0].value,
-                    vm.digitalChars[1].productSpecCharacteristicValue[0].value,
-                    false,
-                    meta,
-                    function(result) {
-                        // Set file location
-                        vm.digitalChars[2].productSpecCharacteristicValue[0].value = result.content;
-                        vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
-                        callback();
-                    },
-                    (response) => showAssetError(response),
-                    assetId
-                );
-            } else if (controller.isDigital && vm.currFormat === 'URL') {
-                if(meta !== null && meta !== undefined && meta.idPattern !== undefined){
-                    var entity_id = "<entity_id>"
-                    var entity_type = ""
-                    var idPattern = meta.idPattern.split(":")
-                    if (idPattern.length > 6){
-                        entity_id = idPattern[6]
-                    }
-                    entity_type = idPattern[2]
-                    var end_point = vm.digitalChars[2].productSpecCharacteristicValue[0].value + "/v2/entities/" + entity_id + "/attrs/" + "<attribute>?type=" + entity_type
-                    vm.digitalChars[2].productSpecCharacteristicValue[0].value = end_point
-                }
-                registerM(
-                    vm.digitalChars[2].productSpecCharacteristicValue[0].value,
-                    vm.digitalChars[0].productSpecCharacteristicValue[0].value,
-                    vm.digitalChars[1].productSpecCharacteristicValue[0].value,
-                    meta,
-                    (result) => {
-                        vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
-                        callback();
-                    },
-                    (response) => showAssetError(response),
-                    assetId
-                );
-            }
-        }
-
-        var saveAsset = save.bind(this, Asset.uploadAsset, Asset.registerAsset, null);
-
-        function upgradeAsset(scope, callback) {
-            // Get asset id using product id
-            Asset.searchByProduct(controller.data.id).then(
-                (assetInfo) => {
-                    save(Asset.upgradeAsset, Asset.upgradeRegisteredAsset, assetInfo[0].id, scope, callback);
-                },
-                (err) => {
-                    showAssetError(err);
-                }
-            );
-        }
-
-        function getDigitalChars() {
-            return vm.digitalChars;
-        }
-
-        function getMetaInfo() {
-            return vm.meta;
-        }
-
-        function initMediaType() {
-            if (vm.currentType.mediaTypes.length > 0) {
-                vm.digitalChars[1].productSpecCharacteristicValue[0].value = vm.currentType.mediaTypes[0];
-            } else {
-                vm.digitalChars[1].productSpecCharacteristicValue[0].value = '';
-            }
-        }
-
-        function setForm(modelForm) {
-            form = modelForm;
-        }
-
         function isValidAsset() {
             return form !== null && form.$valid;
         }
 
-        // Inject handler for creating asset
         controller.assetCtl = {
-            saveAsset: saveAsset,
-            upgradeAsset: upgradeAsset,
-            getDigitalChars: getDigitalChars,
-            getMetaInfo: getMetaInfo,
             isValidAsset: isValidAsset
         };
 
-        // Get the asset types related to the current scope
-        controller.getAssetTypes().then(
-            function(typeList) {
-                angular.copy(typeList, vm.assetTypes);
-
-                if (typeList.length) {
-                    // Initialize digital asset characteristics
-                    vm.digitalChars.push(
-                        ProductSpec.createCharacteristic({
-                            name: 'Asset type',
-                            description: 'Type of the digital asset described in this product specification'
-                        })
-                    );
-                    vm.digitalChars[0].productSpecCharacteristicValue.push(
-                        ProductSpec.createCharacteristicValue({
-                            isDefault: true,
-                            value: typeList[0].name
-                        })
-                    );
-                    vm.digitalChars.push(
-                        ProductSpec.createCharacteristic({
-                            name: 'Media type',
-                            description: 'Media type of the digital asset described in this product specification'
-                        })
-                    );
-                    vm.digitalChars[1].productSpecCharacteristicValue.push(
-                        ProductSpec.createCharacteristicValue({
-                            isDefault: true
-                        })
-                    );
-                    vm.digitalChars.push(
-                        ProductSpec.createCharacteristic({
-                            name: 'Location',
-                            description: 'URL pointing to the digital asset described in this product specification'
-                        })
-                    );
-                    vm.digitalChars[2].productSpecCharacteristicValue.push(
-                        ProductSpec.createCharacteristicValue({
-                            isDefault: true
-                        })
-                    );
-                    vm.digitalChars.push(
-                        ProductSpec.createCharacteristic({
-                            name: 'Asset',
-                            description: 'ID of the asset being offered as registered in the BAE'
-                        })
-                    );
-                    vm.digitalChars[3].productSpecCharacteristicValue.push(
-                        ProductSpec.createCharacteristicValue({
-                            isDefault: true
-                        })
-                    );
-                    vm.currentType = typeList[0];
-                    vm.currFormat = vm.currentType.formats[0];
+        var types = {
+            formats : [
+                "URL",
+                "FILE"
+            ],
+            mediaTypes : ["mediaT1", "mediaT2"],
+            formOrder : [0,1],
+            form :[
+                {
+                    id : null
+                },
+                {
+                    id : null
                 }
+            ]
+        }
 
-                vm.status = LOADED;
-            },
-            function() {
-                vm.errMsg = 'There has been an error trying to retrieve asset type info';
-                vm.status = ERROR;
-            }
-        );
+        var typeList = [types];
+
+        vm.currentType = typeList[0];
+        vm.currFormat = vm.currentType.formats[0];
+        vm.status = LOADED;
     }
-    
 
+    /***********************************/
+    //A idea é crear o service candidate no post validation
+
+    function ServiceCandidateCreateController(
+        $state, 
+        $rootScope, 
+        DATA_STATUS, 
+        EVENTS, 
+        ServiceCandidate,
+        Asset,
+        AssetType,
+        Utils
+    ) {
+		var vm = this;
+        
+        vm.getAssetTypes = getAssetTypes;
+
+		this.STATUS = DATA_STATUS;
+		this.status = null;
+
+		this.data = ServiceCandidate.buildInitialData();
+
+		this.create = create;
+
+        function getAssetTypes() {
+            return AssetType.search();
+        }
+
+		function create() {
+			vm.status = vm.STATUS.PENDING;
+			this.data.specCharacteristic = this.characteristics
+	
+			ServiceCandidate.createServiceSpecification(this.data).then((spec) => {
+				vm.status = vm.STATUS.LOADED;
+				$state.go('stock.service.update', {
+					serviceId: spec.id
+				});
+				$rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'created', {
+					resource: 'service specification',
+					name: vm.data.name
+				});
+			}).catch((response) => {
+				vm.status = vm.STATUS.ERROR;
+				const defaultMessage =
+					'There was an unexpected error that prevented the system from creating a new IDP';
+				const error = Utils.parseError(response, defaultMessage);
+
+				$rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
+					error: error
+				});
+			});
+		}
+
+		charCtl();
+	}
+    
     /***********************************/
 
 })();
