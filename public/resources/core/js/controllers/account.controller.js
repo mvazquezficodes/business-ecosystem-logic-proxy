@@ -270,8 +270,6 @@
 
         vm.update = update;
 
-        console.log("Para por update Controller");
-
         $scope.$on(Account.EVENTS.ACCOUNT_UPDATE, function(event, account) {
             _account = account;
             vm.emailAddress = angular.copy(account.getEmailAddress());

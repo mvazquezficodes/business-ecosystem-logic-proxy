@@ -62,6 +62,8 @@ let jsAppFilesToInject = [
     'services/resource-spec.service',
     'services/service-spec.service',
     'services/sharing-models.service',
+    'services/service-candidate.service',
+    'services/service-category.service',
     'services/asset.service',
     'services/asset-type.service',
     'services/datastore.service',

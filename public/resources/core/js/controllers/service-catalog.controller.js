@@ -49,25 +49,12 @@
 			'DATA_STATUS',
 			'EVENTS',
 			'ServiceSpecification',
+            'ServiceCategory',
             'Asset', 
             'AssetType',
 			'Utils',
 			ServiceSpecificationCreateController
 		])
-        /**************************/
-        //Candidate
-        .controller('ServiceCandidateCreateCtrl', [
-			'$state',
-			'$rootScope',
-			'DATA_STATUS',
-			'EVENTS',
-			'ServiceCandidate',
-            'Asset', 
-            'AssetType',
-			'Utils',
-			ServiceCandidateCreateController
-		])
-        /************************/
 		.controller('ServiceSpecificationUpdateCtrl', [
 			'$scope',
             '$state',
@@ -83,7 +70,7 @@
             '$scope', 
             '$rootScope', 
             'Asset', 
-            'ProductSpec', 
+            'ServiceCandidate', 
             'Utils', 
             'EVENTS', 
             AssetController
@@ -127,6 +114,7 @@
 					vm.error = Utils.parseError(response, 'It was impossible to load the list of service specifications');
 					vm.list.status = ERROR;
 				})
+
 			}
 		}
 
@@ -265,6 +253,7 @@
         DATA_STATUS, 
         EVENTS, 
         ServiceSpecification,
+        ServiceCategory,
         Asset,
         AssetType,
         Utils
@@ -303,59 +292,67 @@
 		this.create = create;
 
         function getAssetTypes() {
-            return AssetType.search();
+            /**
+             * Esta función es la que llama al charging backend, ahora está mockeada pero 
+             * voy a necesitar que se llame a las apis igualemente, en el final tiene que hacer
+             * ambas cosas, apis y charging backend
+             */
+            //return AssetType.search();
+            return ServiceCategory.getServiceCategorys();
         }
 
 		function create() {
 			vm.status = vm.STATUS.PENDING;
 			this.data.specCharacteristic = this.characteristics
-
-            /**********************/
-            /*if (vm.isDigital) {
-                var scope = vm.data.name.replace(/ /g, '');
-
-                if (scope.length > 10) {
-                    scope = scope.substr(0, 10);
-                }
-
-                vm.assetCtl.saveAsset(scope, saveProduct);
-            } else {
-                saveProduct();
-            }*/
-            /**********************/
 	
-			service = ServiceSpecification.createServiceSpecification(this.data).then((spec) => {
-				vm.status = vm.STATUS.LOADED;
-				$state.go('stock.service.update', {
-					serviceId: spec.id
-				});
-				$rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'created', {
-					resource: 'service specification',
-					name: vm.data.name
-				});
+			ServiceSpecification.createServiceSpecification(this.data).then((spec) => {
+
+                /***********************/
+                if (vm.isDigital) {
+                    vm.assetCtl.saveCandidate(spec).then((spec1) => {
+
+                        vm.status = vm.STATUS.LOADED;
+                        $state.go('stock.service.update', {
+                            serviceId: spec.id
+                        });
+                        $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'created', {
+                            resource: 'service specification',
+                            name: vm.data.name
+                        });
+
+                    }).catch((response) => {
+                        vm.status = vm.STATUS.ERROR;
+                        const defaultMessage =
+                            'There was an unexpected error that prevented the system from creating a new service candidate';
+                        const error = Utils.parseError(response, defaultMessage);
+
+                        $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
+                            error: error
+                        });
+                        //Si falla el candidate hay que borrar el specification
+                    });
+                } else {
+                    vm.status = vm.STATUS.LOADED;
+                    $state.go('stock.service.update', {
+                        serviceId: spec.id
+                    });
+                    $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'created', {
+                        resource: 'service specification',
+                        name: vm.data.name
+                    });
+                }
+                /***********************/
+
 			}).catch((response) => {
 				vm.status = vm.STATUS.ERROR;
 				const defaultMessage =
-					'There was an unexpected error that prevented the system from creating a new IDP';
+					'There was an unexpected error that prevented the system from creating a new service specification';
 				const error = Utils.parseError(response, defaultMessage);
 
 				$rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
 					error: error
 				});
 			});
-
-            /******************/
-            // Falta el get al category
-            /*candidate = {
-                category : {
-                    id : "proba"
-                },
-                serviceSpecification : {
-                    id : service.id
-                }
-            }
-            ServiceCandidate.createServiceCandidate()*/
-            /******************/
 
 		}
         
@@ -632,78 +629,14 @@
 
     /***********************************/
     
-    function AssetController($scope, $rootScope, Asset, ProductSpec, Utils, EVENTS) {
+    function AssetController($scope, $rootScope, Asset, ServiceCandidate, Utils, EVENTS) {
         var controller = $scope.vm;
         var form = null;
 
         var vm = this;
 
-        var characteristic11 = {
-            value : "name1",
-            algo : "algo"
-        }
-
-        var characteristic12 = {
-            value : "name2",
-            algo : "algo"
-        }
-
-        var characteristic2 = {
-            value : "mediaType1",
-            algo : "algo"
-        }
-        var characteristic3 = {
-            value : "http://url1",
-            algo : "algo"
-        }
-    
-        var digitalChar1 = {
-            productSpecCharacteristicValue : [characteristic11, characteristic12]
-        }
-
-        var digitalChar2 = {
-            productSpecCharacteristicValue : [characteristic2]
-        }
-
-        var digitalChar3 = {
-            productSpecCharacteristicValue : [characteristic3]
-        }
-        
-        var assetType1 = {
-            name : "name1",
-            formats : [
-                "URL",
-                "FILE"
-            ],
-            mediaTypes : ["mediaT1"],
-            formOrder : [0, 1],
-            form :
-            [{
-                id : null
-            },
-            {
-                id : null
-            }]
-        }
-        var assetType2 = {
-            name : "name2",
-            formats : [
-                "URL",
-                "FILE"
-            ],
-            mediaTypes : ["media2"],
-            formOrder : [0,1],
-            form :[{
-                id : null
-            },
-            {
-                id : null
-            }]
-
-        }
-
-        vm.assetTypes = [assetType1, assetType2];
-        vm.digitalChars = [digitalChar1,digitalChar2,digitalChar3];
+        vm.assetTypes = [];
+        vm.digitalChars = [];
         vm.meta = {};
         vm.status = LOADING;
 
@@ -769,90 +702,101 @@
             return form !== null && form.$valid;
         }
 
+        function save(service) {
+            var data = ServiceCandidate.buildInitialData();
+            var id_cat = '';
+            var id_spec = service.id;
+            for (let item of vm.assetTypes) {
+                if (item.name === vm.digitalChars[0].productSpecCharacteristicValue[0].value) {
+                    id_cat = item.id;
+                }
+            }
+
+            var serviceSp = {
+                "id" : id_spec
+            }
+
+            var category = {
+                "id" : id_cat
+            }
+
+            data.serviceSpecification = serviceSp;
+            data.category = category;
+            //Funciona, se crea pero da error en el post validation
+
+            return ServiceCandidate.createServiceCandidate(data);
+        }
+
+        var saveCandidate = save.bind(this);
+
         controller.assetCtl = {
-            isValidAsset: isValidAsset
+            isValidAsset: isValidAsset,
+            saveCandidate: saveCandidate
         };
 
-        var types = {
-            formats : [
-                "URL",
-                "FILE"
-            ],
-            mediaTypes : ["mediaT1", "mediaT2"],
-            formOrder : [0,1],
-            form :[
-                {
-                    id : null
-                },
-                {
-                    id : null
+        controller.getAssetTypes().then(
+            (typeList) => {
+                for (let i=0; i < typeList.length; i++){
+                    typeList[i].formats = [
+                        "URL",
+                        "FILE"
+                    ];
+                    typeList[i].mediaTypes = [];
                 }
-            ]
-        }
 
-        var typeList = [types];
+                angular.copy(typeList, vm.assetTypes);
 
-        vm.currentType = typeList[0];
-        vm.currFormat = vm.currentType.formats[0];
-        vm.status = LOADED;
+                vm.digitalChars[0] = {
+                    productSpecCharacteristicValue : [
+                        {
+                            value : typeList[0].name
+                        }
+                    ]
+                }
+
+                vm.digitalChars[1] = {
+                    productSpecCharacteristicValue : [
+                        {
+                            value : []
+                        }
+                    ]
+                }
+
+                vm.digitalChars[2] = {
+                    productSpecCharacteristicValue : [
+                        {
+                            value : "http://proba.com"
+                        }
+                    ]
+                }
+
+                var types = {
+                    formats : [
+                        "URL",
+                        "FILE"
+                    ],
+                    mediaTypes : [],
+                    formOrder : [0,1],
+                    form :[
+                        {
+                            id : null
+                        },
+                        {
+                            id : null
+                        }
+                    ]
+                }
+
+                var typeListAux = [types];
+
+                vm.currentType = typeListAux[0];
+                vm.currFormat = vm.currentType.formats[0];
+                vm.status = LOADED;
+            }
+        ).catch((response) => {
+                vm.error = Utils.parseError(response, 'It was impossible to load the list of service categories');
+                vm.list.status = ERROR;
+            }
+        );
     }
-
-    /***********************************/
-    //A idea é crear o service candidate no post validation
-
-    function ServiceCandidateCreateController(
-        $state, 
-        $rootScope, 
-        DATA_STATUS, 
-        EVENTS, 
-        ServiceCandidate,
-        Asset,
-        AssetType,
-        Utils
-    ) {
-		var vm = this;
-        
-        vm.getAssetTypes = getAssetTypes;
-
-		this.STATUS = DATA_STATUS;
-		this.status = null;
-
-		this.data = ServiceCandidate.buildInitialData();
-
-		this.create = create;
-
-        function getAssetTypes() {
-            return AssetType.search();
-        }
-
-		function create() {
-			vm.status = vm.STATUS.PENDING;
-			this.data.specCharacteristic = this.characteristics
-	
-			ServiceCandidate.createServiceSpecification(this.data).then((spec) => {
-				vm.status = vm.STATUS.LOADED;
-				$state.go('stock.service.update', {
-					serviceId: spec.id
-				});
-				$rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'created', {
-					resource: 'service specification',
-					name: vm.data.name
-				});
-			}).catch((response) => {
-				vm.status = vm.STATUS.ERROR;
-				const defaultMessage =
-					'There was an unexpected error that prevented the system from creating a new IDP';
-				const error = Utils.parseError(response, defaultMessage);
-
-				$rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
-					error: error
-				});
-			});
-		}
-
-		charCtl();
-	}
-    
-    /***********************************/
-
 })();
