@@ -2,7 +2,6 @@
 	'use strict';
 
 	angular.module('app').factory('ServiceCategory', [
-		'$q',
 		'$resource',
 		'URLS',
 		'LIFECYCLE_STATUS',
@@ -10,14 +9,14 @@
 		ServiceCategoryService
 	]);
 
-	function ServiceCategoryService($q, $resource, URLS, LIFECYCLE_STATUS, User) {
-		const resource = $resource(URLS.SERVICE_CATALOG + '/serviceCategory/:serviceCategoryId', {
-			serviceCategoryId: '@serviceCategoryId'
+	function ServiceCategoryService($resource, URLS, LIFECYCLE_STATUS, User) {
+		const resource = $resource(URLS.SERVICE_CATALOG + '/serviceCategory?name=:aux', {
+			aux: '@aux'
 		}, {
-            update: { method: 'PATCH' }
+			'get': {method: 'GET', isArray: true }
         })
 
-		function getServiceCategorys() {
+		/*function getServiceCategorys() {
             var deferred = $q.defer();
             var params = {};
 
@@ -26,11 +25,11 @@
             });
 
             return deferred.promise;
-		}
+		}*/
 
-		function getServiceSpecficiation(serviceCategoryId) {
+		function getServiceCategory(aux) {
 			let promise = new Promise(function(resolve, reject) {
-				let params = { serviceCategoryId: serviceCategoryId };
+				let params = { aux: aux };
 				resource.get(params,
 					(serviceCategory) => {
 						resolve(serviceCategory)
@@ -42,7 +41,7 @@
 			return promise;
 		}
 
-		function updateServiceCategory(serviceCategoryId, data) {
+		/*function updateServiceCategory(serviceCategoryId, data) {
 			let promise = new Promise(function(resolve, reject) {
 				resource.update({ serviceCategoryId: serviceCategoryId },
 					data,
@@ -84,7 +83,7 @@
 				);
 			});
 			return promise;
-		}
+		}*/
 
 		function exists(params) {
 			let promise = new Promise(function(resolve, _reject) {
@@ -105,11 +104,11 @@
         }
 
 		return {
-			getServiceCategorys: getServiceCategorys,
-			getServiceSpecficiation: getServiceSpecficiation,
-			udpateServiceCategory: updateServiceCategory,
+			//getServiceCategorys: getServiceCategorys,
+			getServiceCategory: getServiceCategory,
+			/*udpateServiceCategory: updateServiceCategory,
 			createServiceCategory: createServiceCategory,
-			deleteServiceCategory: deleteServiceCategory,
+			deleteServiceCategory: deleteServiceCategory,*/
 			exists: exists,
 			buildInitialData: buildInitialData
 		};

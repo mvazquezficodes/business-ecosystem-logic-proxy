@@ -71,6 +71,7 @@
             '$rootScope', 
             'Asset', 
             'ServiceCandidate', 
+            'ServiceCategory',
             'Utils', 
             'EVENTS', 
             AssetController
@@ -292,13 +293,7 @@
 		this.create = create;
 
         function getAssetTypes() {
-            /**
-             * Esta función es la que llama al charging backend, ahora está mockeada pero 
-             * voy a necesitar que se llame a las apis igualemente, en el final tiene que hacer
-             * ambas cosas, apis y charging backend
-             */
-            //return AssetType.search();
-            return ServiceCategory.getServiceCategorys();
+            return AssetType.search();
         }
 
 		function create() {
@@ -308,9 +303,24 @@
 			ServiceSpecification.createServiceSpecification(this.data).then((spec) => {
 
                 /***********************/
+                /*
+                 * Preguntar por el orden de ejecución y el como hace las cosas
+                 * Igual se puede hacer un rollback si falla el asset, pero hai que comprobarlo
+                 * Pero no me gusta la forma porque el como se comprueba queda raro, porque si pondría
+                 * que se crea el servicio pero falla el charging backend... No es bonito
+                 * Si el charging backend falla entre el asset y el create no da fallo, hay error en la consola
+                 * pero no se muestra por pantalla
+                 * El problema viene del getServiceCategory, si se alamacena en el charging el id del servicio ya valdría
+                 */
                 if (vm.isDigital) {
-                    vm.assetCtl.saveCandidate(spec).then((spec1) => {
+                    var scope = vm.data.name.replace(/ /g, '');
 
+                    if (scope.length > 10) {
+                        scope = scope.substr(0, 10);
+                    }
+
+                    vm.assetCtl.saveAsset(scope, spec).then((spec1) => {
+                        /* Necesito pasarle el spec */
                         vm.status = vm.STATUS.LOADED;
                         $state.go('stock.service.update', {
                             serviceId: spec.id
@@ -319,18 +329,8 @@
                             resource: 'service specification',
                             name: vm.data.name
                         });
-
-                    }).catch((response) => {
-                        vm.status = vm.STATUS.ERROR;
-                        const defaultMessage =
-                            'There was an unexpected error that prevented the system from creating a new service candidate';
-                        const error = Utils.parseError(response, defaultMessage);
-
-                        $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
-                            error: error
-                        });
-                        //Si falla el candidate hay que borrar el specification
                     });
+
                 } else {
                     vm.status = vm.STATUS.LOADED;
                     $state.go('stock.service.update', {
@@ -357,6 +357,9 @@
 		}
         
         /*********************************/
+    
+
+        /***************************/
 
         function loadPictureController() {
             buildPictureController(vm, $scope, vm.stepList[4].form, Asset);
@@ -401,9 +404,9 @@
 
 	function ServiceSpecificationUpdateController($scope, $state, $rootScope, LIFECYCLE_STATUS, DATA_STATUS, ServiceSpecification, Utils, EVENTS) {
 		this.STATUS = DATA_STATUS
-        this.status = DATA_STATUS.LOADING
+        this.status = this.STATUS.LOADING
 
-        this.updateStatus = DATA_STATUS.LOADED
+        this.updateStatus = this.STATUS.LOADED
 
         this.data = {}
         this.item = {}
@@ -461,9 +464,9 @@
                 }
             });
 
-            this.updateStatus = DATA_STATUS.PENDING
+            this.updateStatus = STATUS.PENDING
             ServiceSpecification.udpateServiceSpecification(this.data.id, dataUpdated).then((updated) => {
-                this.updateStatus = DATA_STATUS.LOADED
+                this.updateStatus = this.STATUS.LOADED
                 $state.go(
                     'stock.service.update',
                     {
@@ -478,7 +481,7 @@
                     name: updated.name
                 });
             }).catch((response) => {
-                this.updateStatus = DATA_STATUS.LOADED
+                this.updateStatus = this.STATUS.LOADED
                 $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
                     error: Utils.parseError(response, 'Unexpected error trying to update the service spec.')
                 });
@@ -487,17 +490,6 @@
 	}
 
     /***********************************/
-    // Cambios Marcos
-    /*
-        Solo se conecta coa base de datos local para garda a imaxe e o archivo
-        Entendo que entonces no chargin non necesito crear o specification
-        Porque se crea directamente aquí.
-        Igual a idea ahora é porbar a crear o asset aquí, crear o form onde 
-        se garda a imaxe e probar a subir a info ao charging
-        E tamén se chamaría nos assets
-        Esta imaxe crease nos Attachments
-        O resto de info debería ir directa á api de tmforums
-    */
 
     function buildPictureController(vm, $scope, pictureForm, Asset) {
         vm.clearFileInput = clearFileInput;
@@ -629,7 +621,7 @@
 
     /***********************************/
     
-    function AssetController($scope, $rootScope, Asset, ServiceCandidate, Utils, EVENTS) {
+    function AssetController($scope, $rootScope, Asset, ServiceCandidate, ServiceCategory, Utils, EVENTS) {
         var controller = $scope.vm;
         var form = null;
 
@@ -702,47 +694,99 @@
             return form !== null && form.$valid;
         }
 
-        function save(service) {
-            var data = ServiceCandidate.buildInitialData();
-            var id_cat = '';
-            var id_spec = service.id;
-            for (let item of vm.assetTypes) {
-                if (item.name === vm.digitalChars[0].productSpecCharacteristicValue[0].value) {
-                    id_cat = item.id;
-                }
+        function save(uploadM, registerM, assetId, scope, service) {
+            var meta = null;
+
+            if (Object.keys(vm.meta).length) {
+                meta = vm.meta;
             }
+
+            if (vm.currFormat === 'FILE') {
+                // If the format is file, upload it to the asset manager
+                uploadM(
+                    vm.assetFile,
+                    scope,
+                    vm.digitalChars[0].productSpecCharacteristicValue[0].value,
+                    vm.digitalChars[1].productSpecCharacteristicValue[0].value,
+                    false,
+                    meta,
+                    function(result) {
+                        // Set file location
+                        vm.digitalChars[2].productSpecCharacteristicValue[0].value = result.content;
+                        vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
+                    },
+                    (response) => showAssetError(response),
+                    assetId
+                );
+            } else if (controller.isDigital && vm.currFormat === 'URL') {
+                if(meta !== null && meta !== undefined && meta.idPattern !== undefined){
+                    var entity_id = "<entity_id>"
+                    var entity_type = ""
+                    var idPattern = meta.idPattern.split(":")
+                    if (idPattern.length > 6){
+                        entity_id = idPattern[6]
+                    }
+                    entity_type = idPattern[2]
+                    var end_point = vm.digitalChars[2].productSpecCharacteristicValue[0].value + "/v2/entities/" + entity_id + "/attrs/" + "<attribute>?type=" + entity_type
+                    vm.digitalChars[2].productSpecCharacteristicValue[0].value = end_point
+                }
+                registerM(
+                    vm.digitalChars[2].productSpecCharacteristicValue[0].value,
+                    vm.digitalChars[0].productSpecCharacteristicValue[0].value,
+                    vm.digitalChars[1].productSpecCharacteristicValue[0].value,
+                    meta,
+                    (result) => {
+                        vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
+                    },
+                    (response) => showAssetError(response),
+                    assetId
+                );
+            }
+
+            /**
+             * Aquí estaría a parte do candidate
+             * Falla porque necesito usar el id que el plugin tiene en el api no el que tiene del
+             * charging
+             * Necesito hacer un get al api
+             * Tengo que crear un get en el service category que devuelva solo un objeto
+             */
+            console.log(vm.digitalChars[0].productSpecCharacteristicValue[0].value);
+
+            var data = ServiceCandidate.buildInitialData();
+            var id_spec = service.id;
 
             var serviceSp = {
                 "id" : id_spec
             }
 
             var category = {
-                "id" : id_cat
+                "id" : vm.currentType.category_id
             }
 
             data.serviceSpecification = serviceSp;
             data.category = category;
             //Funciona, se crea pero da error en el post validation
+            //Igual la idea ahora es modificar la parte del charging para que guarde el
+            //id de la api
+
+            console.log("Service Candidate data");
+            console.log(data);
 
             return ServiceCandidate.createServiceCandidate(data);
+
         }
 
-        var saveCandidate = save.bind(this);
+        var saveAsset = save.bind(this, Asset.uploadAsset, Asset.registerAsset, null);
 
         controller.assetCtl = {
             isValidAsset: isValidAsset,
-            saveCandidate: saveCandidate
+            saveAsset: saveAsset
         };
 
         controller.getAssetTypes().then(
             (typeList) => {
-                for (let i=0; i < typeList.length; i++){
-                    typeList[i].formats = [
-                        "URL",
-                        "FILE"
-                    ];
-                    typeList[i].mediaTypes = [];
-                }
+
+                console.log(typeList);
 
                 angular.copy(typeList, vm.assetTypes);
 
@@ -757,7 +801,7 @@
                 vm.digitalChars[1] = {
                     productSpecCharacteristicValue : [
                         {
-                            value : []
+                            value : typeList[0].mediaTypes
                         }
                     ]
                 }
@@ -765,31 +809,28 @@
                 vm.digitalChars[2] = {
                     productSpecCharacteristicValue : [
                         {
-                            value : "http://proba.com"
+                            value : typeList[0].href
                         }
                     ]
                 }
 
-                var types = {
-                    formats : [
-                        "URL",
-                        "FILE"
-                    ],
-                    mediaTypes : [],
-                    formOrder : [0,1],
-                    form :[
+                vm.digitalChars[3] = {
+                    productSpecCharacteristicValue : [
                         {
-                            id : null
-                        },
-                        {
-                            id : null
+                            value : ""
                         }
                     ]
                 }
 
-                var typeListAux = [types];
+                vm.digitalChars[4] = {
+                    productSpecCharacteristicValue : [
+                        {
+                            value : typeList[0].category_id
+                        }
+                    ]
+                }
 
-                vm.currentType = typeListAux[0];
+                vm.currentType = typeList[0];
                 vm.currFormat = vm.currentType.formats[0];
                 vm.status = LOADED;
             }

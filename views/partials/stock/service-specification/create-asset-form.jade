@@ -72,7 +72,7 @@ div(ng-controller="AssetController as assetVM")
                             select.form-control(ng-model="assetVM.digitalChars[1].productSpecCharacteristicValue[0].value"
                                 ng-options="media for media in assetVM.currentType.mediaTypes track by media")
 
-                    //-div(ng-repeat="element in assetVM.getCurrentForm()")
+                    div(ng-repeat="element in assetVM.getCurrentForm()")
                         .form-group
                             label(ng-if="element.type != 'checkbox'") {{ assetVM.getMetaLabel(element.id) }}
                             div(ng-if="element.type == 'text'")
