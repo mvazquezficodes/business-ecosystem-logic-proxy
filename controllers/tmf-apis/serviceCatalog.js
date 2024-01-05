@@ -121,8 +121,8 @@ const serviceCatalog = (function() {
 		GET: [utils.validateLoggedIn, validateRetrieving],
 		POST: [utils.validateLoggedIn, validateOwnerSellerPost],
 		PATCH: [utils.validateLoggedIn, validateOwnerSeller],
-		PUT: [utils.validateLoggedIn],
-		DELETE: [utils.validateLoggedIn]
+		PUT: [utils.validateLoggedIn, validateOwnerSeller],
+		DELETE: [utils.validateLoggedIn, validateOwnerSeller]
 	};
 
 	const checkPermissions = function(req, callback) {

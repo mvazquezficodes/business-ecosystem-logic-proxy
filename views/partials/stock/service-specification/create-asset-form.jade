@@ -2,9 +2,6 @@ div(ng-controller="AssetController as assetVM")
     div(ng-switch="assetVM.status")
         div(ng-switch-when="LOADED")
             div(ng-show="assetVM.assetTypes.length")
-                //- Inicio cambios
-                //-div(ng-controller="ServiceCandidateCreateCtrl as candidateVM")
-                //- Fin cambios todo esta tabulado 
                 form(name="assetForm" ng-controller="FormWizardCtrl as assetFormCtl")
                     .form-group(ng-init="assetVM.setForm(assetForm)")
                         .row

@@ -34,7 +34,6 @@ const usageManagement = require('./tmf-apis/usageManagement').usageManagement
 const account = require('./tmf-apis/account').account
 const customer = require('./tmf-apis/customer').customer
 const serviceCatalog = require('./tmf-apis/serviceCatalog').serviceCatalog
-const serviceCandidate = require('./tmf-apis/catalog').catalog
 const resource = require('./tmf-apis/resource').resource
 
 // Other dependencies
@@ -56,10 +55,9 @@ function tmf() {
 	apiControllers[config.endpoints.account.path] = account;
 	apiControllers[config.endpoints.customer.path] = customer;
 	apiControllers[config.endpoints.service.path] = serviceCatalog;
-	apiControllers[config.endpoints.service.path] = serviceCandidate;
 	apiControllers[config.endpoints.resource.path] = resource;
 
-	const newApis = ['party', 'catalog', 'ordering', 'inventory', 'service', 'resource', 'account', 'serviceInventory', 'resourceInventory']
+	const newApis = ['party', 'catalog', 'ordering', 'inventory', 'service', 'resource', 'account','serviceCatalog', 'resourceInventory']
 
 	const getAPIName = function(apiUrl) {
 		return apiUrl.split('/')[1];

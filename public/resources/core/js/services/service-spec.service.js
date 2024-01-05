@@ -110,8 +110,8 @@
 		function deleteServiceSpecification(serviceSpecificationId) {
 			let promise = new Promise(function(resolve, reject) {
 				resource.delete({ serviceSpecificationId: serviceSpecificationId },
-					() => {
-						resolve();
+					(deleted) => {
+						resolve(deleted);
 					},
 					(response) => {
 						reject(response);

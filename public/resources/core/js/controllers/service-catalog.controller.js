@@ -71,7 +71,7 @@
             '$rootScope', 
             'Asset', 
             'ServiceCandidate', 
-            'ServiceCategory',
+            'ServiceSpecification',
             'Utils', 
             'EVENTS', 
             AssetController
@@ -248,6 +248,11 @@
         }
     }
 
+    /*
+     * En principio las cosas funcionan pero necesito chequear bien los fallos porque
+     * si en algún momento falla la creación del candidate e service queda creado y el asset también
+     */
+
 	function ServiceSpecificationCreateController(
         $state, 
         $rootScope, 
@@ -299,27 +304,46 @@
 		function create() {
 			vm.status = vm.STATUS.PENDING;
 			this.data.specCharacteristic = this.characteristics
-	
+
+            var servicio;
+
 			ServiceSpecification.createServiceSpecification(this.data).then((spec) => {
 
+                servicio = spec;
+
                 /***********************/
-                /*
-                 * Preguntar por el orden de ejecución y el como hace las cosas
-                 * Igual se puede hacer un rollback si falla el asset, pero hai que comprobarlo
-                 * Pero no me gusta la forma porque el como se comprueba queda raro, porque si pondría
-                 * que se crea el servicio pero falla el charging backend... No es bonito
-                 * Si el charging backend falla entre el asset y el create no da fallo, hay error en la consola
-                 * pero no se muestra por pantalla
-                 * El problema viene del getServiceCategory, si se alamacena en el charging el id del servicio ya valdría
-                 */
                 if (vm.isDigital) {
                     var scope = vm.data.name.replace(/ /g, '');
+
+                    /**
+                     * Preguntar lo de lo de los boolean en el metadata
+                     */
+                    for (let element in vm.assetCtl.meta) {
+                        var char_form;
+
+                        if (typeof vm.assetCtl.meta[element] === 'boolean') {
+                            char_form = angular.copy({
+                                id: `urn:ngsi-ld:characteristic:${uuid.v4()}`,
+                                name: element,
+                                configurable: vm.assetCtl.meta[element],
+                                description: vm.assetCtl.meta[element].toString(),
+                                characteristicValueSpecification: []
+                            })
+                        } else {
+                            char_form = angular.copy({
+                                id: `urn:ngsi-ld:characteristic:${uuid.v4()}`,
+                                name: element,
+                                description: vm.assetCtl.meta[element],
+                                characteristicValueSpecification: []
+                            })
+                        }
+                    }
 
                     if (scope.length > 10) {
                         scope = scope.substr(0, 10);
                     }
 
-                    vm.assetCtl.saveAsset(scope, spec).then((spec1) => {
+                    vm.assetCtl.saveAsset(scope, spec).then(() => {
                         /* Necesito pasarle el spec */
                         vm.status = vm.STATUS.LOADED;
                         $state.go('stock.service.update', {
@@ -329,8 +353,7 @@
                             resource: 'service specification',
                             name: vm.data.name
                         });
-                    });
-
+                    })
                 } else {
                     vm.status = vm.STATUS.LOADED;
                     $state.go('stock.service.update', {
@@ -344,6 +367,14 @@
                 /***********************/
 
 			}).catch((response) => {
+
+                console.log("Catch del service specification");
+                console.log(servicio);
+
+                /*if (servicio != undefined){
+                    ServiceSpecification.deleteServiceSpecification(servicio.id);
+                }*/
+
 				vm.status = vm.STATUS.ERROR;
 				const defaultMessage =
 					'There was an unexpected error that prevented the system from creating a new service specification';
@@ -621,7 +652,7 @@
 
     /***********************************/
     
-    function AssetController($scope, $rootScope, Asset, ServiceCandidate, ServiceCategory, Utils, EVENTS) {
+    function AssetController($scope, $rootScope, Asset, ServiceCandidate, ServiceSpecification, Utils, EVENTS) {
         var controller = $scope.vm;
         var form = null;
 
@@ -682,12 +713,27 @@
                     formFields.push(vm.currentType.form[key]);
                 })
             } else {
-                for (key in vm.currentType.form) {
+                for (let key in vm.currentType.form) {
                     vm.currentType.form[key].id = key;
                     formFields.push(vm.currentType.form[key]);
                 }
             }
             return formFields;
+        }
+
+        function showAssetError(response, service) {
+
+            console.log("Entrar en show asset error");
+
+            ServiceSpecification.deleteServiceSpecification(service.id);
+
+            var defaultMessage =
+                'There was an unexpected error that prevented your ' + 'digital asset to be registered';
+            var error = Utils.parseError(response, defaultMessage);
+
+            $rootScope.$broadcast(EVENTS.MESSAGE_ADDED, 'error', {
+                error: error
+            });
         }
 
         function isValidAsset() {
@@ -700,6 +746,8 @@
             if (Object.keys(vm.meta).length) {
                 meta = vm.meta;
             }
+
+            console.log(service);
 
             if (vm.currFormat === 'FILE') {
                 // If the format is file, upload it to the asset manager
@@ -715,9 +763,26 @@
                         vm.digitalChars[2].productSpecCharacteristicValue[0].value = result.content;
                         vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
                     },
-                    (response) => showAssetError(response),
+                    (response) => showAssetError(response, service),
                     assetId
-                );
+                ).then(() => {
+                    var data = ServiceCandidate.buildInitialData();
+                    var id_spec = service.id;
+
+                    var serviceSp = {
+                        "id" : id_spec
+                    }
+
+                    var category = {
+                        "id" : vm.currentType.category_id
+                    }
+
+                    data.serviceSpecification = serviceSp;
+                    data.category = category;
+
+                    ServiceCandidate.createServiceCandidate(data);
+        
+                })
             } else if (controller.isDigital && vm.currFormat === 'URL') {
                 if(meta !== null && meta !== undefined && meta.idPattern !== undefined){
                     var entity_id = "<entity_id>"
@@ -738,55 +803,47 @@
                     (result) => {
                         vm.digitalChars[3].productSpecCharacteristicValue[0].value = result.id;
                     },
-                    (response) => showAssetError(response),
+                    (response) => showAssetError(response, service),
                     assetId
-                );
+                ).then(() => {
+                    var data = ServiceCandidate.buildInitialData();
+                    var id_spec = service.id;
+
+                    var serviceSp = {
+                        "id" : id_spec
+                    }
+
+                    var category = {
+                        "id" : vm.currentType.category_id
+                    }
+
+                    data.serviceSpecification = serviceSp;
+                    data.category = category;
+
+                    ServiceCandidate.createServiceCandidate(data);
+        
+                });
             }
-
-            /**
-             * Aquí estaría a parte do candidate
-             * Falla porque necesito usar el id que el plugin tiene en el api no el que tiene del
-             * charging
-             * Necesito hacer un get al api
-             * Tengo que crear un get en el service category que devuelva solo un objeto
-             */
-            console.log(vm.digitalChars[0].productSpecCharacteristicValue[0].value);
-
-            var data = ServiceCandidate.buildInitialData();
-            var id_spec = service.id;
-
-            var serviceSp = {
-                "id" : id_spec
-            }
-
-            var category = {
-                "id" : vm.currentType.category_id
-            }
-
-            data.serviceSpecification = serviceSp;
-            data.category = category;
-            //Funciona, se crea pero da error en el post validation
-            //Igual la idea ahora es modificar la parte del charging para que guarde el
-            //id de la api
-
-            console.log("Service Candidate data");
-            console.log(data);
-
-            return ServiceCandidate.createServiceCandidate(data);
-
         }
 
         var saveAsset = save.bind(this, Asset.uploadAsset, Asset.registerAsset, null);
 
+        function AseetInfoAsCharac() {
+            var characteristic;
+            var characteristics = [];
+
+
+        }
+
         controller.assetCtl = {
             isValidAsset: isValidAsset,
-            saveAsset: saveAsset
+            saveAsset: saveAsset,
+            meta: vm.meta
         };
 
         controller.getAssetTypes().then(
             (typeList) => {
 
-                console.log(typeList);
 
                 angular.copy(typeList, vm.assetTypes);
 
