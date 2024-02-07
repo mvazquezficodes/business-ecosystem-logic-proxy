@@ -1,29 +1,15 @@
-/* Copyright (c) 2023 Future Internet Consulting and Development Solutions S.L.
- *
- * This file belongs to the business-ecosystem-logic-proxy of the
- * Business API Ecosystem
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 const async = require('async')
 const axios = require('axios')
 const config = require('./../../config')
 const utils = require('./../../lib/utils')
 const tmfUtils = require('./../../lib/tmfUtils')
+const storeClient = require('./../../lib/store').storeClient
 
 const serviceCatalog = (function() {
+
+    const serviceSpecificationPattern = new RegExp('/serviceSpecification/?$');
+    const serviceCandidatePattern = new RegExp('/serviceCandidate/?$');
+
 
 	const validateRetrieving = function(req, callback) {
         // Check if the request is a list of service specifications
@@ -33,6 +19,86 @@ const serviceCatalog = (function() {
             callback(null);
         }
         // validate if a service specification is returned only by the owner
+    };
+
+    const validateCandidate = function(req, updatedCategory, oldCategory, action, callback) {
+        // Candidates can only be created when Specification and Category are created
+        // Igual la validación que está dando problemas se puede hace aquí
+        if (!utils.hasRole(req.user, config.oauth2.roles.admin)) {
+            callback({
+                status: 403,
+                message: 'Only administrators can ' + action + ' categories'
+            });
+        }
+    };
+
+    const createHandler = function(req, resp, callback) {
+        if (tmfUtils.isOwner(req, resp)) {
+            callback(null);
+        } else {
+            callback({
+                status: 403,
+                message: 'The user making the request and the specified owner are not the same user'
+            });
+        }
+    };
+
+    const validateCreation = function(req, callback) {
+        let body;
+        let flag = false;
+
+        try {
+            body = JSON.parse(req.body);
+        } catch (e) {
+            callback({
+                status: 400,
+                message: 'The provided body is not a valid JSON'
+            });
+
+            return; // EXIT
+        }
+
+        for (let i = 0; i < body.specCharacteristic.length; i++){
+            if(body.specCharacteristic[i].name === "asset type"){
+                flag = true;
+                break;
+            }
+        }
+
+        if (flag){
+            if (serviceCandidatePattern.test(req.apiUrl)) {
+                validateCandidate(req, body, null, 'create', callback);
+            } else {
+                // Check that the user has the seller role or is an admin
+                if (!utils.hasRole(req.user, config.oauth2.roles.seller)) {
+                    callback({
+                        status: 403,
+                        message: 'You are not authorized to create resources'
+                    });
+    
+                    return; // EXIT
+                }
+    
+                if (serviceSpecificationPattern.test(req.apiUrl)) {
+                    createHandler(req, body, function(err) {
+                        if (err) {
+                            return callback(err);
+                        }
+    
+                        // Check that the product specification contains a valid product
+                        // according to the charging backend
+                        storeClient.validateSpecification(body, req.user, callback);
+                    });
+                } else {
+                    callback(null);
+                    //createHandler(req, body, callback);
+                }
+            }
+        } else {
+            console.log("Sale por el else");
+            callback(null);
+            return;
+        }
     };
 
     var getResourceAPIUrl = function(path) {
@@ -119,7 +185,7 @@ const serviceCatalog = (function() {
 
 	const validators = {
 		GET: [utils.validateLoggedIn, validateRetrieving],
-		POST: [utils.validateLoggedIn, validateOwnerSellerPost],
+		POST: [utils.validateLoggedIn, validateOwnerSellerPost, validateCreation],
 		PATCH: [utils.validateLoggedIn, validateOwnerSeller],
 		PUT: [utils.validateLoggedIn, validateOwnerSeller],
 		DELETE: [utils.validateLoggedIn, validateOwnerSeller]

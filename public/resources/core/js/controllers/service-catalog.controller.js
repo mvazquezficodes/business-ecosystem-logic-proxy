@@ -249,8 +249,7 @@
     }
 
     /*
-     * En principio las cosas funcionan pero necesito chequear bien los fallos porque
-     * si en algún momento falla la creación del candidate e service queda creado y el asset también
+     * Funciona pero debge ser que al meter el service candidate en el then hace que pete el creation
      */
 
 	function ServiceSpecificationCreateController(
@@ -293,7 +292,10 @@
 		this.status = null;
         vm.isDigital = false;
 
+        vm.loadFileController = loadFileController;
+
 		this.data = ServiceSpecification.buildInitialData();
+        let flag_repeated = false;
 
 		this.create = create;
 
@@ -301,9 +303,100 @@
             return AssetType.search();
         }
 
+        function loadFileController() {
+            buildFileController(vm, $scope, vm.stepList[4].form, Asset);
+        }
+
 		function create() {
+            var char_form;
+            var name;
+            var characteristicValueSpecification;
 			vm.status = vm.STATUS.PENDING;
-			this.data.specCharacteristic = this.characteristics
+			this.data.specCharacteristic = this.characteristics;
+
+            console.log("Print de datos");
+            console.log(vm.assetCtl);
+            console.log(vm.assetCtl.getAssetFile());
+            console.log(vm.assetCtl.getCurrFormat());
+
+            if (!flag_repeated) {
+                flag_repeated = true;
+                if (vm.isDigital) {
+
+                    let digitalChars = vm.assetCtl.getDigitalChars();
+                    let flag_file = false;
+
+                    for (let i = 0; i < 3; i++) {
+                        if (i === 0) {
+                            name = "asset type";
+                        } else if (i === 1) {
+                            name = "media type";
+                        } else if (i === 2) {
+                            name = "location"
+                            if (vm.assetCtl.getCurrFormat() === "FILE"){ 
+                                flag_file = true;
+                            }
+                        }
+                        if (flag_file) {
+                            let name = vm.assetCtl.getAssetFile().name;
+                            console.log("GetAssetFile");
+                            console.log(vm.assetCtl.getAssetFile());
+                            characteristicValueSpecification = [{
+                                value: name
+                            }]
+                        } else {
+                            characteristicValueSpecification = digitalChars[i].productSpecCharacteristicValue
+                        }
+
+                        char_form = angular.copy({
+                            id: `urn:ngsi-ld:characteristic:${uuid.v4()}`,
+                            name: name,
+                            characteristicValueSpecification: characteristicValueSpecification
+                        });
+                        this.data.specCharacteristic.push(char_form)
+                    }
+
+                    /**
+                     * Preguntar lo de lo de los boolean en el metadata
+                     */
+
+                    console.log("Printing meta info");
+                    console.log(vm.assetCtl.getMetaInfo())
+
+                    let meta = vm.assetCtl.getMetaInfo();
+
+                    for (let element in meta) {
+
+                        console.log("Printing elements");
+                        console.log(element);
+
+                        if (typeof element === 'boolean') {
+                            char_form = angular.copy({
+                                id: `urn:ngsi-ld:characteristic:${uuid.v4()}`,
+                                name: element,
+                                description: meta[element].toString(),
+                                characteristicValueSpecification: {
+                                    value: meta[element]
+                                }
+                            });
+                            this.data.specCharacteristic.push(char_form)
+                        } else {
+                            char_form = angular.copy({
+                                id: `urn:ngsi-ld:characteristic:${uuid.v4()}`,
+                                name: element,
+                                description: vm.assetCtl.meta[element],
+                                characteristicValueSpecification: {
+                                    value: meta[element]
+                                }
+                            });
+                            this.data.specCharacteristic.push(char_form)
+                        }
+                    }
+                }
+            }
+
+            console.log("Print data");
+            console.log(this.data);
 
             var servicio;
 
@@ -314,30 +407,6 @@
                 /***********************/
                 if (vm.isDigital) {
                     var scope = vm.data.name.replace(/ /g, '');
-
-                    /**
-                     * Preguntar lo de lo de los boolean en el metadata
-                     */
-                    for (let element in vm.assetCtl.meta) {
-                        var char_form;
-
-                        if (typeof vm.assetCtl.meta[element] === 'boolean') {
-                            char_form = angular.copy({
-                                id: `urn:ngsi-ld:characteristic:${uuid.v4()}`,
-                                name: element,
-                                configurable: vm.assetCtl.meta[element],
-                                description: vm.assetCtl.meta[element].toString(),
-                                characteristicValueSpecification: []
-                            })
-                        } else {
-                            char_form = angular.copy({
-                                id: `urn:ngsi-ld:characteristic:${uuid.v4()}`,
-                                name: element,
-                                description: vm.assetCtl.meta[element],
-                                characteristicValueSpecification: []
-                            })
-                        }
-                    }
 
                     if (scope.length > 10) {
                         scope = scope.substr(0, 10);
@@ -651,6 +720,69 @@
     }
 
     /***********************************/
+
+    function buildFileController(vm, $scope, form, Asset) {
+        function clearFileInput() {
+            if (!form.extraFile) {
+                form.extraFile = {};
+            } else {
+                // Reset possible previous errors
+                form.extraFile.$invalid = false;
+                form.extraFile.$error = {};
+            }
+        }
+
+        vm.removeExtraFile = function(index) {
+            vm.extraFiles.splice(index, 1);
+        };
+
+        $scope.$watch(
+            function() {
+                return vm.extraFile;
+            },
+            function() {
+                // Check that the new file is a valid image
+                if (vm.extraFile) {
+                    clearFileInput();
+                    form.extraFile.$dirty = true;
+
+                    var prefix = vm.data.name.replace(/ /g, '');
+
+                    if (prefix.length > 10) {
+                        prefix = prefix.substr(0, 10);
+                    }
+
+                    // Upload the file to the server when it is included in the input
+                    Asset.uploadAsset(
+                        vm.extraFile,
+                        prefix,
+                        null,
+                        vm.extraFile.type,
+                        true,
+                        null,
+                        function(result) {
+                            vm.extraFiles.push({
+                                name: vm.extraFile.name,
+                                type: vm.extraFile.type,
+                                href: result.content
+                            });
+                        },
+                        function() {
+                            // The picture cannot be uploaded set error in input
+                            form.extraFile.$invalid = true;
+                            form.extraFile.$error = {
+                                upload: true
+                            };
+                        }
+                    );
+                }
+            }
+        );
+
+        clearFileInput();
+    }
+
+    /***********************************/
     
     function AssetController($scope, $rootScope, Asset, ServiceCandidate, ServiceSpecification, Utils, EVENTS) {
         var controller = $scope.vm;
@@ -661,6 +793,8 @@
         vm.assetTypes = [];
         vm.digitalChars = [];
         vm.meta = {};
+        vm.currFormat = "";
+        vm.currentType = {};
         vm.status = LOADING;
 
         vm.isSelected = isSelected;
@@ -694,15 +828,21 @@
         function setCurrentType() {
             var i, found = false;
             var assetType = vm.digitalChars[0].productSpecCharacteristicValue[0].value;
+            console.log("setCurrentType principio");
+            console.log(vm.currFormat);
 
             for (i = 0; i < vm.assetTypes.length && !found; i++) {
 
                 if (assetType === vm.assetTypes[i].name) {
                     found = true;
-                    vm.currentType = vm.assetTypes[i];
+                    //vm.currentType = vm.assetTypes[i];
+                    angular.copy(vm.assetTypes[i], vm.currentType);
                 }
             }
             vm.currFormat = vm.currentType.formats[0];
+            //angular.copy(vm.currentType.formats[0], vm.currFormat);
+            console.log("setCurrentType final");
+            console.log(vm.currFormat);
         }
 
         function getCurrentForm() {
@@ -746,8 +886,6 @@
             if (Object.keys(vm.meta).length) {
                 meta = vm.meta;
             }
-
-            console.log(service);
 
             if (vm.currFormat === 'FILE') {
                 // If the format is file, upload it to the asset manager
@@ -826,24 +964,29 @@
             }
         }
 
-        var saveAsset = save.bind(this, Asset.uploadAsset, Asset.registerAsset, null);
-
-        function AseetInfoAsCharac() {
-            var characteristic;
-            var characteristics = [];
-
-
+        function getAssetFile() {
+            return vm.assetFile;
         }
 
-        controller.assetCtl = {
-            isValidAsset: isValidAsset,
-            saveAsset: saveAsset,
-            meta: vm.meta
-        };
+        function getMetaInfo() {
+            return vm.meta;
+        }
+
+        function getDigitalChars() {
+            return vm.digitalChars;
+        }
+
+        function getCurrFormat() {
+            return vm.currFormat;
+        }
+
+        var saveAsset = save.bind(this, Asset.uploadAsset, Asset.registerAsset, null);
 
         controller.getAssetTypes().then(
             (typeList) => {
 
+                console.log("Printing asset types");
+                console.log(typeList);
 
                 angular.copy(typeList, vm.assetTypes);
 
@@ -887,7 +1030,9 @@
                     ]
                 }
 
-                vm.currentType = typeList[0];
+                vm.currentType = vm.assetTypes[0];
+                /*vm.currFormat = vm.currentType.formats[0];*/
+                //angular.copy(vm.assetTypes[0], vm.currentType);
                 vm.currFormat = vm.currentType.formats[0];
                 vm.status = LOADED;
             }
@@ -896,5 +1041,17 @@
                 vm.list.status = ERROR;
             }
         );
+
+
+        controller.assetCtl = {
+            isValidAsset: isValidAsset,
+            saveAsset: saveAsset,
+            getMetaInfo: getMetaInfo,
+            getCurrentForm: getCurrentForm,
+            getCurrFormat: getCurrFormat,
+            getDigitalChars: getDigitalChars,
+            getAssetFile: getAssetFile,
+            meta: vm.meta
+        };
     }
 })();

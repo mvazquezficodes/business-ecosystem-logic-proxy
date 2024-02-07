@@ -73,6 +73,7 @@ function tmf() {
 	};
 
 	const redirectRequest = function(req, res) {
+
 		let url;
 		const api = getAPIName(req.apiUrl);
 
